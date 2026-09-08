@@ -1,0 +1,6 @@
+{
+  "name": "Piano Learning System",
+  "description": "PC-based structured piano learning platform with interactive virtual piano, 8-section lessons, guided exercises, practice tracker, and instructor dashboard.",
+  "requestFramePermissions": ["midi"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
