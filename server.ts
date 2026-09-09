@@ -656,13 +656,34 @@ async function startServer() {
     const { studentId, exerciseTitle, durationMinutes, accuracy, notesPlayed } = req.body;
     const sId = studentId || currentUserId;
 
+    if (!sId) {
+      return res.status(401).json({ code: 'AUTH_REQUIRED', error: 'You must be signed in to record practice.' });
+    }
+
+    const requester = db.users.find(user => user.id === currentUserId);
+    if (currentUserId !== sId && requester?.role !== 'INSTRUCTOR' && requester?.role !== 'ADMIN') {
+      return res.status(403).json({ code: 'FORBIDDEN', error: 'You can only record your own practice.' });
+    }
+
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 1 || durationMinutes > 240) {
+      return res.status(400).json({ code: 'INVALID_DURATION', error: 'Practice duration must be between 1 and 240 minutes.' });
+    }
+    if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) {
+      return res.status(400).json({ code: 'INVALID_ACCURACY', error: 'Practice accuracy must be between 0 and 100.' });
+    }
+    if (!Number.isInteger(notesPlayed) || notesPlayed < 1) {
+      return res.status(400).json({ code: 'INVALID_NOTE_COUNT', error: 'Practice must include at least one played note.' });
+    }
+
     const newSession: PracticeSession = {
       id: `prac-${Date.now()}`,
       studentId: sId,
-      exerciseTitle: exerciseTitle || 'Free Keyboard Practice',
-      durationMinutes: durationMinutes || 10,
-      accuracy: accuracy !== undefined ? accuracy : 90,
-      notesPlayed: notesPlayed || 50,
+      exerciseTitle: typeof exerciseTitle === 'string' && exerciseTitle.trim()
+        ? exerciseTitle.trim()
+        : 'Free Keyboard Practice',
+      durationMinutes,
+      accuracy,
+      notesPlayed,
       completedAt: new Date().toISOString(),
     };
     db.practiceSessions.push(newSession);

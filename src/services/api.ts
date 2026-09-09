@@ -11,17 +11,59 @@ import {
   Song
 } from '../types.js';
 
+export class ApiError extends Error {
+  status: number;
+  code: string;
+
+  constructor(message: string, status = 0, code = 'REQUEST_FAILED') {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function request<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
+
+    if (!response.ok) {
+      const message = typeof payload === 'object' && payload?.error
+        ? payload.error
+        : `Request failed (${response.status})`;
+      const code = typeof payload === 'object' && payload?.code
+        ? payload.code
+        : 'REQUEST_FAILED';
+      throw new ApiError(message, response.status, code);
+    }
+
+    return payload as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError('The request took too long. Check your connection and try again.', 408, 'TIMEOUT');
+    }
+    throw new ApiError('We could not reach the piano studio. Check your connection and try again.', 0, 'NETWORK_ERROR');
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export const api = {
   // Auth
   async getMe(): Promise<{ user: User | null; profile?: StudentProfile | null }> {
-    const res = await fetch('/api/auth/me');
-    if (!res.ok) throw new Error('Failed to get current user');
-    return res.json();
+    return request('/api/auth/me');
   },
 
   async logout(): Promise<void> {
-    const res = await fetch('/api/auth/logout', { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to log out');
+    await request('/api/auth/logout', { method: 'POST' });
   },
 
   async switchUser(userId: string): Promise<{ user: User; profile?: StudentProfile }> {
@@ -39,16 +81,11 @@ export const api = {
     password?: string,
     role?: 'STUDENT' | 'INSTRUCTOR'
   ): Promise<{ user: User; profile?: StudentProfile; token: string }> {
-    const res = await fetch('/api/auth/login', {
+    return request('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usernameOrEmail, email: usernameOrEmail, password, role }),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Login failed');
-    }
-    return res.json();
   },
 
   async register(registrationData: {
@@ -65,16 +102,11 @@ export const api = {
       ? { name: registrationData, email, role }
       : registrationData;
 
-    const res = await fetch('/api/auth/register', {
+    return request('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Registration failed');
-    }
-    return res.json();
   },
 
   // Dynamic Users
@@ -143,15 +175,11 @@ export const api = {
 
   async getLessons(studentId?: string): Promise<Lesson[]> {
     const url = studentId ? `/api/lessons?studentId=${studentId}` : '/api/lessons';
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch lessons');
-    return res.json();
+    return request(url);
   },
 
   async getLesson(lessonId: string): Promise<Lesson & { exercise?: Exercise | null }> {
-    const res = await fetch(`/api/lessons/${lessonId}`);
-    if (!res.ok) throw new Error('Failed to fetch lesson');
-    return res.json();
+    return request(`/api/lessons/${lessonId}`);
   },
 
   async createLesson(lessonData: Partial<Lesson>): Promise<Lesson> {
@@ -186,13 +214,11 @@ export const api = {
     explanation: string;
     correctAnswer: string | string[];
   }> {
-    const res = await fetch(`/api/exercises/${exerciseId}/submit`, {
+    return request(`/api/exercises/${exerciseId}/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ answer }),
     });
-    if (!res.ok) throw new Error('Failed to submit exercise');
-    return res.json();
   },
 
   // Practice
@@ -203,13 +229,11 @@ export const api = {
     accuracy: number;
     notesPlayed: number;
   }): Promise<PracticeSession> {
-    const res = await fetch('/api/practice', {
+    return request('/api/practice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(session),
     });
-    if (!res.ok) throw new Error('Failed to record practice session');
-    return res.json();
   },
 
   async getStudentPractice(studentId: string): Promise<PracticeSession[]> {

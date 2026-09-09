@@ -17,7 +17,8 @@ import {
   Award,
   Sparkles,
   HelpCircle,
-  Volume2
+  Volume2,
+  AlertCircle
 } from 'lucide-react';
 
 interface PracticeModeProps {
@@ -40,6 +41,8 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
   const [correctCount, setCorrectCount] = useState<number>(0);
   const [totalNotesPlayed, setTotalNotesPlayed] = useState<number>(0);
   const [sessionSaved, setSessionSaved] = useState<boolean>(false);
+  const [isSavingSession, setIsSavingSession] = useState<boolean>(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   // Drill states
   // 1. Find Note
@@ -85,6 +88,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
   const handleStartSession = () => {
     setIsActive(true);
     setSessionSaved(false);
+    setSessionError(null);
   };
 
   const handlePauseSession = () => {
@@ -98,6 +102,8 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
     setCorrectCount(0);
     setTotalNotesPlayed(0);
     setSessionSaved(false);
+    setIsSavingSession(false);
+    setSessionError(null);
     setSequenceProgress([]);
     setSequenceCompleteMessage(null);
     setFindNoteFeedback(null);
@@ -112,6 +118,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
 
   // Keyboard note play handler in practice mode
   const handleNotePlay = (note: string) => {
+    if (!isActive || sessionSaved || isSavingSession) return;
     setTotalNotesPlayed(p => p + 1);
 
     // If Drill is FIND_NOTE
@@ -168,6 +175,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
 
   // Chord Option click
   const handleChordSelect = (option: string) => {
+    if (!isActive || sessionSaved || isSavingSession) return;
     const q = chordQuestions[chordQIndex];
     setAttempts(a => a + 1);
     if (option === q.correct) {
@@ -196,10 +204,22 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
 
   // Finish and save practice session
   const handleFinishSession = async () => {
-    if (!user || sessionSaved) return;
-    const durationSpent = Math.max(1, Math.round((selectedDuration * 60 - secondsRemaining) / 60));
-    const accuracy = attempts > 0 ? Math.round((correctCount / attempts) * 100) : 95;
+    if (!user || sessionSaved || isSavingSession) return;
+    const elapsedSeconds = selectedDuration * 60 - secondsRemaining;
+    if (elapsedSeconds < 30) {
+      setSessionError('Practice for at least 30 seconds before recording a session.');
+      return;
+    }
+    if (totalNotesPlayed === 0) {
+      setSessionError('Play at least one note before recording your practice.');
+      return;
+    }
 
+    const durationSpent = Math.max(1, Math.round(elapsedSeconds / 60));
+    const accuracy = attempts > 0 ? Math.round((correctCount / attempts) * 100) : 0;
+
+    setIsSavingSession(true);
+    setSessionError(null);
     try {
       await api.recordPractice({
         studentId: user.id,
@@ -213,13 +233,16 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
       await refreshUser();
     } catch (e) {
       console.error('Failed to save practice', e);
+      setSessionError(e instanceof Error ? e.message : 'Your practice session could not be saved.');
+    } finally {
+      setIsSavingSession(false);
     }
   };
 
   const minutes = Math.floor(secondsRemaining / 60);
   const seconds = secondsRemaining % 60;
   const timeFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  const accuracy = attempts > 0 ? Math.round((correctCount / attempts) * 100) : 100;
+  const accuracy = attempts > 0 ? Math.round((correctCount / attempts) * 100) : null;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8 animate-in fade-in">
@@ -352,7 +375,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
               </div>
               <div className="text-right">
                 <span className="text-xs text-stone-500">Accuracy</span>
-                <div className="text-xl font-mono font-bold text-emerald-700">{accuracy}%</div>
+                <div className="text-xl font-mono font-bold text-emerald-700">{accuracy === null ? '—' : `${accuracy}%`}</div>
               </div>
             </div>
 
@@ -501,7 +524,7 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
             </div>
             <div className="bg-stone-50 p-3 rounded-xl border border-stone-100">
               <span className="text-[11px] text-stone-500 block">Accuracy</span>
-              <span className="text-xl font-bold text-emerald-700 font-mono">{accuracy}%</span>
+              <span className="text-xl font-bold text-emerald-700 font-mono">{accuracy === null ? '—' : `${accuracy}%`}</span>
             </div>
             <div className="bg-stone-50 p-3 rounded-xl border border-stone-100">
               <span className="text-[11px] text-stone-500 block">Notes Struck</span>
@@ -509,10 +532,17 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
             </div>
           </div>
 
+          {sessionError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{sessionError}</span>
+            </div>
+          )}
+
           <button
             id="finish-practice-session-btn"
             onClick={handleFinishSession}
-            disabled={sessionSaved}
+            disabled={sessionSaved || isSavingSession}
             className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition ${
               sessionSaved
                 ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-default'
@@ -523,6 +553,11 @@ export const PracticeMode: React.FC<PracticeModeProps> = ({ initialExerciseTitle
               <>
                 <CheckCircle2 className="w-4 h-4 text-emerald-700" />
                 Practice Session Recorded!
+              </>
+            ) : isSavingSession ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Saving Practice Session...
               </>
             ) : (
               <>

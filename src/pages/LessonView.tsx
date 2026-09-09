@@ -19,7 +19,9 @@ import {
   Play,
   RotateCcw,
   Check,
-  Award
+  Award,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 interface LessonViewProps {
@@ -47,34 +49,57 @@ export const LessonView: React.FC<LessonViewProps> = ({ lessonId, onBack, onNext
   // Completion state (Section 8)
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [savingProgress, setSavingProgress] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadLesson = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const data = await api.getLesson(lessonId);
+      setLesson(data);
+      setActiveStep(1);
+      setPracticeNotesPlayed([]);
+      setPracticeCompleted(false);
+      setSelectedOption('');
+      setQuizSubmitted(false);
+      setQuizResult(null);
+      setIsCompleted(false);
+    } catch (err) {
+      console.error('Failed to load lesson', err);
+      setLoadError(err instanceof Error ? err.message : 'This lesson could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadLesson = async () => {
-      setLoading(true);
-      try {
-        const data = await api.getLesson(lessonId);
-        setLesson(data);
-        setActiveStep(1);
-        setPracticeNotesPlayed([]);
-        setPracticeCompleted(false);
-        setSelectedOption('');
-        setQuizSubmitted(false);
-        setQuizResult(null);
-        setIsCompleted(false);
-      } catch (err) {
-        console.error('Failed to load lesson', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadLesson();
   }, [lessonId]);
 
-  if (loading || !lesson) {
+  if (loading) {
     return (
       <div className="max-w-4xl mx-auto py-16 px-4 text-center">
         <div className="w-10 h-10 border-4 border-amber-800 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-stone-600 font-medium">Loading lesson curriculum...</p>
+      </div>
+    );
+  }
+
+  if (loadError || !lesson) {
+    return (
+      <div className="max-w-xl mx-auto py-16 px-4 text-center">
+        <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <h1 className="text-xl font-bold text-stone-900">This lesson is unavailable</h1>
+        <p className="text-stone-600 text-sm mt-2">{loadError || 'We could not find the requested lesson.'}</p>
+        <button
+          onClick={loadLesson}
+          className="mt-5 px-4 py-2.5 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-sm font-bold inline-flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
       </div>
     );
   }

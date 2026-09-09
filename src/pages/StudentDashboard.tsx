@@ -14,7 +14,9 @@ import {
   BookOpen,
   Calendar,
   Flame,
-  Music
+  Music,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 interface StudentDashboardProps {
@@ -34,35 +36,37 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [feedbacks, setFeedbacks] = useState<InstructorFeedback[]>([]);
   const [achievements, setAchievements] = useState<AchievementType[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadData = async () => {
+    if (!user) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [lessonsData, asgnData, fbData] = await Promise.all([
+        api.getLessons(user.id),
+        api.getStudentAssignments(user.id),
+        api.getStudentFeedback(user.id),
+      ]);
+
+      const curr = lessonsData.find(l => l.id === profile?.currentLessonId) || lessonsData[0];
+      setCurrentLesson(curr);
+      setAssignments(asgnData);
+      setFeedbacks(fbData);
+
+      const fullProg = await api.getStudentProgress(user.id);
+      if (fullProg?.achievementsList) {
+        setAchievements(fullProg.achievementsList);
+      }
+    } catch (err) {
+      console.error('Error loading dashboard data', err);
+      setLoadError(err instanceof Error ? err.message : 'Your dashboard could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!user) return;
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const [lessonsData, asgnData, fbData] = await Promise.all([
-          api.getLessons(user.id),
-          api.getStudentAssignments(user.id),
-          api.getStudentFeedback(user.id),
-        ]);
-
-        // Find current or recommended lesson
-        const curr = lessonsData.find(l => l.id === profile?.currentLessonId) || lessonsData[0];
-        setCurrentLesson(curr);
-        setAssignments(asgnData);
-        setFeedbacks(fbData);
-
-        // Fetch detailed progress for achievements
-        const fullProg = await api.getStudentProgress(user.id);
-        if (fullProg?.achievementsList) {
-          setAchievements(fullProg.achievementsList);
-        }
-      } catch (err) {
-        console.error('Error loading dashboard data', err);
-      } finally {
-        setLoading(false);
-      }
-    };
     loadData();
   }, [user, profile?.currentLessonId]);
 
@@ -76,6 +80,35 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   };
 
   const progressPercent = profile?.overallProgress || 0;
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-16 text-center">
+        <div className="w-10 h-10 border-4 border-amber-800 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-stone-700 font-semibold">Loading your piano journey...</p>
+        <p className="text-stone-500 text-sm mt-1">Preparing today&apos;s lesson, practice, and feedback.</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center">
+        <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <h1 className="text-xl font-bold text-stone-900">Your dashboard is unavailable</h1>
+        <p className="text-stone-600 text-sm mt-2">{loadError}</p>
+        <button
+          onClick={loadData}
+          className="mt-5 px-4 py-2.5 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-sm font-bold inline-flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 animate-in fade-in">

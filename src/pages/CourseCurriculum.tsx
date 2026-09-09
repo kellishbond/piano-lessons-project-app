@@ -10,7 +10,9 @@ import {
   Sparkles,
   Award,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 interface CourseCurriculumProps {
@@ -22,23 +24,27 @@ export const CourseCurriculum: React.FC<CourseCurriculumProps> = ({ onSelectLess
   const [courses, setCourses] = useState<Course[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [cData, lData] = await Promise.all([
+        api.getCourses(),
+        api.getLessons(user?.id),
+      ]);
+      setCourses(cData);
+      setLessons(lData);
+    } catch (err) {
+      console.error(err);
+      setLoadError(err instanceof Error ? err.message : 'The curriculum could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const [cData, lData] = await Promise.all([
-          api.getCourses(),
-          api.getLessons(user?.id),
-        ]);
-        setCourses(cData);
-        setLessons(lData);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
     load();
   }, [user]);
 
@@ -54,6 +60,34 @@ export const CourseCurriculum: React.FC<CourseCurriculumProps> = ({ onSelectLess
     { id: 'mod-9', num: 9, title: 'Playing With Both Hands', desc: 'Left hand chord foundations with right hand melody.' },
     { id: 'mod-10', num: 10, title: 'Advanced Beginner Skills', desc: 'Dynamic expression (piano, forte) and tempo phrasing.' },
   ];
+
+  if (loading) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-16 text-center">
+        <div className="w-10 h-10 border-4 border-amber-800 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-stone-700 font-semibold">Loading your curriculum...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 text-center">
+        <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center mx-auto mb-4">
+          <AlertCircle className="w-6 h-6" />
+        </div>
+        <h1 className="text-xl font-bold text-stone-900">Curriculum unavailable</h1>
+        <p className="text-stone-600 text-sm mt-2">{loadError}</p>
+        <button
+          onClick={load}
+          className="mt-5 px-4 py-2.5 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-sm font-bold inline-flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-8 animate-in fade-in">
